@@ -62,6 +62,9 @@ private:
     // --- Audio callback ---
     AudioCallback makeAudioCallback();
 
+    // --- Helpers ---
+    void updateDeviceIndex(); // Synchronise m_selectedDeviceIndex avec le device courant
+
     // --- Helpers de dessin custom (via ImDrawList) ---
     void drawSpectrumPlot(const SpectrumData& spectrum, float width, float height);
     void drawHistoryPlot(const std::vector<HistoryEntry>& history, float width, float height);

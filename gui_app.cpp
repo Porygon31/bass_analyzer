@@ -27,6 +27,14 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+// Conversion FILETIME → ULARGE_INTEGER (pour calculs CPU usage)
+static ULARGE_INTEGER toULI(const FILETIME& ft) {
+    ULARGE_INTEGER uli;
+    uli.LowPart  = ft.dwLowDateTime;
+    uli.HighPart = ft.dwHighDateTime;
+    return uli;
+}
+
 // Forward declare du handler Win32 d'ImGui
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM, LPARAM);
 
@@ -143,13 +151,7 @@ bool GuiApp::init(int width, int height) {
 
     // Énumération initiale des devices audio
     m_deviceList = m_capture.enumerateDevices();
-    auto currentId = m_capture.getCurrentDeviceId();
-    for (int i = 0; i < (int)m_deviceList.size(); i++) {
-        if (m_deviceList[i].id == currentId) {
-            m_selectedDeviceIndex = i;
-            break;
-        }
-    }
+    updateDeviceIndex();
 
     // Init du chrono pour le delta-time
     m_lastFrameTime = std::chrono::steady_clock::now();
@@ -160,11 +162,11 @@ bool GuiApp::init(int width, int height) {
     m_numCores = si.dwNumberOfProcessors;
     FILETIME creation, exit, kernel, user;
     GetProcessTimes(GetCurrentProcess(), &creation, &exit, &kernel, &user);
-    memcpy(&m_prevKernel, &kernel, sizeof(ULARGE_INTEGER));
-    memcpy(&m_prevUser, &user, sizeof(ULARGE_INTEGER));
+    m_prevKernel = toULI(kernel);
+    m_prevUser   = toULI(user);
     FILETIME nowFt;
     GetSystemTimeAsFileTime(&nowFt);
-    memcpy(&m_prevTime, &nowFt, sizeof(ULARGE_INTEGER));
+    m_prevTime = toULI(nowFt);
 
     return true;
 }
@@ -197,14 +199,7 @@ void GuiApp::renderFrame() {
     // --- Polling des changements de périphériques audio ---
     if (m_capture.hasDeviceListChanged()) {
         m_deviceList = m_capture.enumerateDevices();
-        auto currentId = m_capture.getCurrentDeviceId();
-        m_selectedDeviceIndex = 0;
-        for (int i = 0; i < (int)m_deviceList.size(); i++) {
-            if (m_deviceList[i].id == currentId) {
-                m_selectedDeviceIndex = i;
-                break;
-            }
-        }
+        updateDeviceIndex();
     }
     if (m_capture.hasDefaultDeviceChanged() && m_followDefaultDevice) {
         uint32_t oldSr = m_capture.getSampleRate();
@@ -212,13 +207,7 @@ void GuiApp::renderFrame() {
             if (m_capture.getSampleRate() != oldSr)
                 m_detector.init(m_capture.getSampleRate(), m_cutoff);
             m_deviceList = m_capture.enumerateDevices();
-            auto currentId = m_capture.getCurrentDeviceId();
-            for (int i = 0; i < (int)m_deviceList.size(); i++) {
-                if (m_deviceList[i].id == currentId) {
-                    m_selectedDeviceIndex = i;
-                    break;
-                }
-            }
+            updateDeviceIndex();
         }
     }
 
@@ -392,12 +381,20 @@ void GuiApp::drawControlsPanel() {
 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(100);
-    const char* fftSizes[] = { "Auto", "512", "1024", "2048", "4096", "8192", "16384" };
-    if (ImGui::Combo("FFT Size", &m_fftSizeIndex, fftSizes, IM_ARRAYSIZE(fftSizes))) {
-        size_t sizes[] = { 0, 512, 1024, 2048, 4096, 8192, 16384 };
-        m_capture.stop();
-        m_detector.setFftSize(sizes[m_fftSizeIndex]);
-        m_capture.start(makeAudioCallback());
+    static const struct { const char* label; size_t value; } fftOptions[] = {
+        {"Auto", 0}, {"512", 512}, {"1024", 1024}, {"2048", 2048},
+        {"4096", 4096}, {"8192", 8192}, {"16384", 16384}
+    };
+    if (ImGui::BeginCombo("FFT Size", fftOptions[m_fftSizeIndex].label)) {
+        for (int i = 0; i < IM_ARRAYSIZE(fftOptions); i++) {
+            if (ImGui::Selectable(fftOptions[i].label, i == m_fftSizeIndex)) {
+                m_fftSizeIndex = i;
+                m_capture.stop();
+                m_detector.setFftSize(fftOptions[i].value);
+                m_capture.start(makeAudioCallback());
+            }
+        }
+        ImGui::EndCombo();
     }
     if (ImGui::IsItemHovered()) {
         float res = (float)m_detector.getEffectiveSampleRate() / (float)m_detector.getFFTSize();
@@ -682,6 +679,21 @@ void GuiApp::drawPitchMeter(const PitchInfo& pitch, float width, float height) {
 }
 
 // =============================================================================
+// HELPERS
+// =============================================================================
+
+void GuiApp::updateDeviceIndex() {
+    auto currentId = m_capture.getCurrentDeviceId();
+    m_selectedDeviceIndex = 0;
+    for (int i = 0; i < (int)m_deviceList.size(); i++) {
+        if (m_deviceList[i].id == currentId) {
+            m_selectedDeviceIndex = i;
+            break;
+        }
+    }
+}
+
+// =============================================================================
 // AUDIO CALLBACK
 // =============================================================================
 
@@ -771,10 +783,9 @@ void GuiApp::updateCpuUsage() {
     FILETIME nowFt;
     GetSystemTimeAsFileTime(&nowFt);
 
-    ULARGE_INTEGER curKernel, curUser, curTime;
-    memcpy(&curKernel, &kernel, sizeof(ULARGE_INTEGER));
-    memcpy(&curUser, &user, sizeof(ULARGE_INTEGER));
-    memcpy(&curTime, &nowFt, sizeof(ULARGE_INTEGER));
+    ULARGE_INTEGER curKernel = toULI(kernel);
+    ULARGE_INTEGER curUser   = toULI(user);
+    ULARGE_INTEGER curTime   = toULI(nowFt);
 
     uint64_t cpuDelta = (curKernel.QuadPart - m_prevKernel.QuadPart)
                       + (curUser.QuadPart - m_prevUser.QuadPart);
