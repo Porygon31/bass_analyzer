@@ -33,6 +33,15 @@
     } \
 } while(0)
 
+// Conversion wide string Windows → std::string UTF-8
+static std::string wideToUtf8(LPCWSTR wstr) {
+    if (!wstr) return {};
+    int size = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, nullptr, 0, nullptr, nullptr);
+    std::string result(size - 1, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wstr, -1, result.data(), size, nullptr, nullptr);
+    return result;
+}
+
 // =============================================================================
 // DeviceNotificationClient — Implémentation COM IMMNotificationClient
 // =============================================================================
@@ -108,10 +117,7 @@ AudioCapture::~AudioCapture() {
     if (m_enumerator && m_notifyClient) {
         m_enumerator->UnregisterEndpointNotificationCallback(m_notifyClient);
     }
-    if (m_notifyClient) {
-        m_notifyClient->Release();
-        m_notifyClient = nullptr;
-    }
+    SAFE_RELEASE(m_notifyClient);
 
     // Libération des ressources per-device
     releaseDeviceInterfaces();
@@ -155,15 +161,24 @@ bool AudioCapture::init(const std::wstring& deviceId) {
         std::cerr << "[AudioCapture] Warning: failed to register notification callback\n";
     }
 
-    // Acquisition du device
+    // Acquisition du device + initialisation des interfaces
+    if (!acquireDevice(deviceId)) return false;
+    return initDeviceInterfaces();
+}
+
+bool AudioCapture::acquireDevice(const std::wstring& deviceId) {
+    HRESULT hr;
     if (deviceId.empty()) {
         hr = m_enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &m_device);
-        CHECK_HR(hr, "Failed to get default audio endpoint");
         m_useDefaultDevice = true;
     } else {
         hr = m_enumerator->GetDevice(deviceId.c_str(), &m_device);
-        CHECK_HR(hr, "Failed to get audio device by ID");
         m_useDefaultDevice = false;
+    }
+    if (FAILED(hr)) {
+        std::cerr << "[AudioCapture] Failed to acquire device (0x"
+                  << std::hex << hr << std::dec << ")\n";
+        return false;
     }
 
     // Stocker l'ID du device courant
@@ -172,8 +187,7 @@ bool AudioCapture::init(const std::wstring& deviceId) {
         m_currentDeviceId = devId;
         CoTaskMemFree(devId);
     }
-
-    return initDeviceInterfaces();
+    return true;
 }
 
 bool AudioCapture::initDeviceInterfaces() {
@@ -187,13 +201,10 @@ bool AudioCapture::initDeviceInterfaces() {
         PropVariantInit(&varName);
         hr = props->GetValue(PKEY_Device_FriendlyName, &varName);
         if (SUCCEEDED(hr) && varName.vt == VT_LPWSTR) {
-            // Conversion wide string → UTF-8
-            int size = WideCharToMultiByte(CP_UTF8, 0, varName.pwszVal, -1, nullptr, 0, nullptr, nullptr);
-            m_deviceName.resize(size - 1);
-            WideCharToMultiByte(CP_UTF8, 0, varName.pwszVal, -1, m_deviceName.data(), size, nullptr, nullptr);
+            m_deviceName = wideToUtf8(varName.pwszVal);
         }
         PropVariantClear(&varName);
-        props->Release();
+        SAFE_RELEASE(props);
     }
 
     // Activation du client audio sur le device
@@ -275,7 +286,7 @@ std::vector<AudioDeviceInfo> AudioCapture::enumerateDevices() {
             defaultId = id;
             CoTaskMemFree(id);
         }
-        defaultDev->Release();
+        SAFE_RELEASE(defaultDev);
     }
 
     // Énumérer tous les devices de sortie actifs
@@ -303,55 +314,27 @@ std::vector<AudioDeviceInfo> AudioCapture::enumerateDevices() {
             PROPVARIANT varName;
             PropVariantInit(&varName);
             if (SUCCEEDED(props->GetValue(PKEY_Device_FriendlyName, &varName)) && varName.vt == VT_LPWSTR) {
-                int size = WideCharToMultiByte(CP_UTF8, 0, varName.pwszVal, -1, nullptr, 0, nullptr, nullptr);
-                info.name.resize(size - 1);
-                WideCharToMultiByte(CP_UTF8, 0, varName.pwszVal, -1, info.name.data(), size, nullptr, nullptr);
+                info.name = wideToUtf8(varName.pwszVal);
             }
             PropVariantClear(&varName);
-            props->Release();
+            SAFE_RELEASE(props);
         }
 
         info.isDefault = (info.id == defaultId);
         result.push_back(std::move(info));
-        dev->Release();
+        SAFE_RELEASE(dev);
     }
-    collection->Release();
+    SAFE_RELEASE(collection);
     return result;
 }
 
 bool AudioCapture::switchDevice(const std::wstring& deviceId, AudioCallback callback) {
-    // 1. Arrêter la capture
     stop();
-
-    // 2. Libérer les interfaces per-device (pas l'enumerator ni le notify client)
     releaseDeviceInterfaces();
 
-    // 3. Acquérir le nouveau device
-    HRESULT hr;
-    if (deviceId.empty()) {
-        hr = m_enumerator->GetDefaultAudioEndpoint(eRender, eConsole, &m_device);
-        m_useDefaultDevice = true;
-    } else {
-        hr = m_enumerator->GetDevice(deviceId.c_str(), &m_device);
-        m_useDefaultDevice = false;
-    }
-    if (FAILED(hr)) {
-        std::cerr << "[AudioCapture] Failed to get device for switch (0x"
-                  << std::hex << hr << std::dec << ")\n";
-        return false;
-    }
-
-    // Stocker l'ID du nouveau device
-    LPWSTR devId = nullptr;
-    if (SUCCEEDED(m_device->GetId(&devId))) {
-        m_currentDeviceId = devId;
-        CoTaskMemFree(devId);
-    }
-
-    // 4. Initialiser les interfaces sur le nouveau device
+    if (!acquireDevice(deviceId)) return false;
     if (!initDeviceInterfaces()) return false;
 
-    // 5. Redémarrer la capture
     return start(std::move(callback));
 }
 

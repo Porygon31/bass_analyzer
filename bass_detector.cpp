@@ -277,17 +277,11 @@ std::vector<HistoryEntry> BassDetector::getHistory() {
     std::vector<HistoryEntry> result;
     result.reserve(m_historyCount);
 
-    if (m_historyCount < HISTORY_SIZE) {
-        // Le buffer n'a pas encore fait le tour → lecture linéaire
-        for (size_t i = 0; i < m_historyCount; i++) {
-            result.push_back(m_history[i]);
-        }
-    } else {
-        // Le buffer a fait le tour → lire depuis la tête (le plus ancien)
-        for (size_t i = 0; i < HISTORY_SIZE; i++) {
-            size_t idx = (m_historyHead + i) % HISTORY_SIZE;
-            result.push_back(m_history[idx]);
-        }
+    // Quand le buffer n'est pas plein, start=0 et modulo n'a pas d'effet.
+    // Quand il est plein, on lit depuis m_historyHead (le plus ancien).
+    size_t start = (m_historyCount < HISTORY_SIZE) ? 0 : m_historyHead;
+    for (size_t i = 0; i < m_historyCount; i++) {
+        result.push_back(m_history[(start + i) % HISTORY_SIZE]);
     }
 
     return result;

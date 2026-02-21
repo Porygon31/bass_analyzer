@@ -95,8 +95,11 @@ private:
     // Boucle de capture exécutée dans m_thread
     void captureLoop();
 
-    // Initialise les interfaces device (après que m_device est acquis).
+    // Acquiert un device par ID (ou le défaut si deviceId vide).
     // Code commun à init() et switchDevice().
+    bool acquireDevice(const std::wstring& deviceId);
+
+    // Initialise les interfaces device (après que m_device est acquis).
     bool initDeviceInterfaces();
 
     // Libère les interfaces per-device (pas l'enumerator ni le notify client)
