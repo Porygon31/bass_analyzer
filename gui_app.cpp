@@ -838,7 +838,8 @@ void GuiApp::cleanupDeviceD3D() {
 
 void GuiApp::createRenderTarget() {
     ID3D11Texture2D* backBuffer = nullptr;
-    m_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer));
+    if (FAILED(m_swapChain->GetBuffer(0, IID_PPV_ARGS(&backBuffer))) || !backBuffer)
+        return;
     m_d3dDevice->CreateRenderTargetView(backBuffer, nullptr, &m_rtv);
     backBuffer->Release();
 }
