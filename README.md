@@ -8,8 +8,13 @@ Analyseur de fréquences basses en temps réel avec GUI. Capture le son interne 
 - **Historique temporel** — graphe scrollant des fréquences sur ~30 secondes
 - **Détection de pitch par autocorrélation** (McLeod NSDF) — plus précis que la FFT seule pour les basses
 - **Tuner intégré** — affichage note + cents + indicateur de justesse
+- **Oscilloscope** — forme d'onde brute en temps réel (~400ms)
 - **VU-mètre dB** avec gradient de couleur
+- **Sélection du device audio** — switch entre les sorties audio en temps réel
 - **Cutoff ajustable** en temps réel (30-500 Hz)
+- **Personnalisation des couleurs** du spectre (4 niveaux d'intensité)
+- **Guide d'utilisation intégré** — menu Aide avec explication de chaque panneau
+- **Fenêtre redimensionnable** avec gestion correcte du DPI
 - **Double mode** : GUI (par défaut) et Console (debug)
 
 ## Architecture / Pipeline
@@ -79,9 +84,13 @@ bass_analyzer_console.exe
 
 | Élément | Action |
 |---------|--------|
+| Combo "Device" | Sélectionner la sortie audio à analyser |
 | Slider "Bass Cutoff" | Ajuster la fréquence de coupure (30-500 Hz) |
+| Combo "FFT Size" | Résolution fréquentielle (Auto / 512 / 1024 / ... / 16384) |
 | Slider "Smoothing" | Lissage du spectre (0 = brut, 0.95 = très lissé) |
-| Checkboxes | Afficher/masquer Spectrum, History, Pitch |
+| Checkboxes | Afficher/masquer Spectrum, History, Pitch, Oscilloscope |
+| Menu Aide | Guide d'utilisation intégré |
+| Menu Settings | Personnalisation des couleurs du spectre (4 niveaux d'intensité) |
 | Panels | Repliables via les headers |
 
 ### Contrôles Console
@@ -95,20 +104,22 @@ bass_analyzer_console.exe
 ## Structure des fichiers
 
 ```
-src/
-├── main.cpp            # Point d'entrée (GUI / Console selon le define)
-├── gui_app.h/cpp       # Application ImGui + DirectX 11
-├── audio_capture.h/cpp # WASAPI loopback capture
-├── bass_detector.h/cpp # FFT, analyse spectrale, historique
-├── pitch_detector.h/cpp # Autocorrélation McLeod NSDF
-└── dsp_utils.h/cpp     # Butterworth, décimation, fenêtrage
+bass_analyzer/
+├── CMakeLists.txt          # Configuration CMake (C++20, FetchContent ImGui)
+├── README.md
+├── main.cpp                # Point d'entrée (GUI / Console selon le define)
+├── gui_app.h/cpp           # Application ImGui + DirectX 11
+├── audio_capture.h/cpp     # WASAPI loopback capture
+├── bass_detector.h/cpp     # FFT, analyse spectrale, historique
+├── pitch_detector.h/cpp    # Autocorrélation McLeod NSDF
+└── dsp_utils.h/cpp         # Butterworth, décimation, fenêtrage
 ```
 
 ## Améliorations futures
 
 - [ ] Export des données (CSV, OSC pour VJing / mapping)
-- [ ] Sélection du device audio dans la GUI
 - [ ] Mode multiband (sub-bass / mid-bass / upper-bass)
 - [ ] Waterfall / spectrogram 2D (temps × fréquence × magnitude)
 - [ ] Custom font pour les gros affichages Hz
-- [ ] Thèmes de couleur
+- [x] ~~Sélection du device audio dans la GUI~~
+- [x] ~~Thèmes de couleur~~ (couleurs du spectre configurables)

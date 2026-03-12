@@ -311,8 +311,15 @@ void GuiApp::drawMainPanel() {
         char dbBuf[32];
         snprintf(dbBuf, sizeof(dbBuf), "%.1f dB", result.peakMagnitude);
         ImVec2 ts = ImGui::CalcTextSize(dbBuf);
-        dl->AddText(ImVec2(barPos.x + barW/2 - ts.x/2, barPos.y + barH/2 - ts.y/2),
-                   IM_COL32(0xFF, 0xFF, 0xFF, 0xCC), dbBuf);
+        ImVec2 textPos(barPos.x + barW/2 - ts.x/2, barPos.y + barH/2 - ts.y/2);
+        bool barCoversText = (fillW > barW / 2);
+        ImU32 outlineCol = barCoversText ? IM_COL32(0xFF, 0xFF, 0xFF, 0xBB) : IM_COL32(0x00, 0x00, 0x00, 0xBB);
+        ImU32 textCol    = barCoversText ? IM_COL32(0x00, 0x00, 0x00, 0xFF) : IM_COL32(0xFF, 0xFF, 0xFF, 0xFF);
+        dl->AddText(ImVec2(textPos.x - 1, textPos.y), outlineCol, dbBuf);
+        dl->AddText(ImVec2(textPos.x + 1, textPos.y), outlineCol, dbBuf);
+        dl->AddText(ImVec2(textPos.x, textPos.y - 1), outlineCol, dbBuf);
+        dl->AddText(ImVec2(textPos.x, textPos.y + 1), outlineCol, dbBuf);
+        dl->AddText(textPos, textCol, dbBuf);
         ImGui::Dummy(ImVec2(0, barH + 4));
     } else {
         ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "No bass signal detected...");
