@@ -226,9 +226,10 @@ void GuiApp::renderFrame() {
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
-    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+    ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
                              ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
-                             ImGuiWindowFlags_NoBringToFrontOnFocus;
+                             ImGuiWindowFlags_NoBringToFrontOnFocus |
+                             ImGuiWindowFlags_AlwaysVerticalScrollbar;
     ImGui::Begin("##Main", nullptr, flags);
 
     drawMainPanel();
@@ -592,10 +593,12 @@ void GuiApp::drawHistoryPlot(const std::vector<HistoryEntry>& history, float wid
     for (auto& pt : pitchPoints)
         dl->AddCircleFilled(pt, 3.0f, COL_YELLOW);
 
-    // Légende
-    dl->AddText(ImVec2(pos.x + width - 200, pos.y + 4), COL_CYAN, "--- FFT Peak");
-    dl->AddCircleFilled(ImVec2(pos.x + width - 200 + 4, pos.y + 22), 3.0f, COL_YELLOW);
-    dl->AddText(ImVec2(pos.x + width - 188, pos.y + 16), COL_YELLOW, "Autocorr Pitch");
+    // Légende — positionnée dynamiquement à droite
+    float legendW = ImGui::CalcTextSize("Autocorr Pitch").x + 20;
+    float legendX = pos.x + width - legendW;
+    dl->AddText(ImVec2(legendX, pos.y + 4), COL_CYAN, "--- FFT Peak");
+    dl->AddCircleFilled(ImVec2(legendX + 4, pos.y + 22), 3.0f, COL_YELLOW);
+    dl->AddText(ImVec2(legendX + 12, pos.y + 16), COL_YELLOW, "Autocorr Pitch");
 
     ImGui::Dummy(ImVec2(0, height + 4));
 }
