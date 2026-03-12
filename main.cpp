@@ -15,6 +15,7 @@
 #include "audio_capture.h"
 #include "bass_detector.h"
 #include <iostream>
+#include <memory>
 #include <string>
 #include <cstring>
 
@@ -68,11 +69,11 @@ void runConsoleMode() {
             switch (ch) {
                 case 'q': case 'Q': case 27: running = false; break; // ESC ou Q
                 case '+': case '=':
-                    cutoff = std::min(cutoff + 10.0f, 500.0f);
+                    cutoff = std::min<float>(cutoff + 10.0f, 500.0f);
                     detector.setCutoff(cutoff);
                     break;
                 case '-': case '_':
-                    cutoff = std::max(cutoff - 10.0f, 30.0f);
+                    cutoff = std::max<float>(cutoff - 10.0f, 30.0f);
                     detector.setCutoff(cutoff);
                     break;
                 case 'r': case 'R':
@@ -128,15 +129,15 @@ int main(int argc, char* argv[]) {
 // ============================================================
 // WinMain est le point d'entrée pour les applications Windows GUI
 // (pas de fenêtre console créée)
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance,
-                   LPSTR lpCmdLine, int nCmdShow) {
-    GuiApp app;
+int WINAPI WinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance,
+                   _In_ LPSTR lpCmdLine, _In_ int nCmdShow) {
+    auto app = std::make_unique<GuiApp>();
 
-    if (!app.init(1400, 900)) {
+    if (!app->init(1400, 900)) {
         return 1;
     }
 
-    app.run(); // Boucle principale (bloquante)
+    app->run(); // Boucle principale (bloquante)
     return 0;
 }
 #endif
