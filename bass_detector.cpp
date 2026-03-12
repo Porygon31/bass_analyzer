@@ -86,7 +86,7 @@ void BassDetector::init(uint32_t sourceSampleRate, float bassCutoffHz, size_t ff
     // FFTW_MEASURE : FFTW teste plusieurs algorithmes et garde le plus rapide.
     // C'est lent à la 1ère exécution mais ensuite la FFT est optimale.
     m_fftPlan = fftwf_plan_dft_r2c_1d(
-        static_cast<int>(m_fftSize), m_fftIn, m_fftOut, FFTW_MEASURE
+        static_cast<int>(m_fftSize), m_fftIn, m_fftOut, FFTW_ESTIMATE
     );
 
     m_rawBuffer.clear();
