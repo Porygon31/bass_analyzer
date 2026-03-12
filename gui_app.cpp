@@ -52,11 +52,18 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM,
 #define COL_GRID     IM_COL32(0x30, 0x30, 0x50, 0x80) // Grille
 
 // === Gestionnaire de messages Win32 ===
+static UINT g_ResizeWidth = 0, g_ResizeHeight = 0;
+
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
         return true;
     switch (msg) {
-    case WM_SIZE:      return 0;
+    case WM_SIZE:
+        if (wParam != SIZE_MINIMIZED) {
+            g_ResizeWidth  = (UINT)LOWORD(lParam);
+            g_ResizeHeight = (UINT)HIWORD(lParam);
+        }
+        return 0;
     case WM_SYSCOMMAND:
         if ((wParam & 0xFFF0) == SC_KEYMENU) return 0;
         break;
@@ -185,6 +192,15 @@ void GuiApp::run() {
             continue;
         }
         m_swapChainOccluded = false;
+
+        // Redimensionner le swap chain si la fenêtre a changé de taille
+        if (g_ResizeWidth != 0 && g_ResizeHeight != 0) {
+            cleanupRenderTarget();
+            m_swapChain->ResizeBuffers(0, g_ResizeWidth, g_ResizeHeight, DXGI_FORMAT_UNKNOWN, 0);
+            g_ResizeWidth = g_ResizeHeight = 0;
+            createRenderTarget();
+        }
+
         renderFrame();
     }
 }
