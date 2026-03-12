@@ -15,7 +15,6 @@ Analyseur de fréquences basses en temps réel avec GUI. Capture le son interne 
 - **Personnalisation des couleurs** du spectre (4 niveaux d'intensité)
 - **Guide d'utilisation intégré** — menu Aide avec explication de chaque panneau
 - **Fenêtre redimensionnable** avec gestion correcte du DPI
-- **Double mode** : GUI (par défaut) et Console (debug)
 
 ## Architecture / Pipeline
 
@@ -61,23 +60,14 @@ Audio Loopback (48kHz, WASAPI)
 
 ```cmd
 mkdir build && cd build
-
-# GUI (fenêtre DirectX11 + ImGui)
 cmake -DFFTW3_DIR=C:\libs\fftw-3.3.5-dll64 ..
 cmake --build . --target bass_analyzer --config Release
-
-# Console (mode texte, debug)
-cmake --build . --target bass_analyzer_console --config Release
 ```
 
 ## Utilisation
 
 ```cmd
-# Mode GUI (par défaut)
 bass_analyzer.exe
-
-# Mode Console
-bass_analyzer_console.exe
 ```
 
 ### Contrôles GUI
@@ -92,14 +82,6 @@ bass_analyzer_console.exe
 | Menu Aide | Guide d'utilisation intégré |
 | Menu Settings | Personnalisation des couleurs du spectre (4 niveaux d'intensité) |
 | Panels | Repliables via les headers |
-
-### Contrôles Console
-
-| Touche | Action |
-|--------|--------|
-| `Q` / `ESC` | Quitter |
-| `+` / `-` | Ajuster le cutoff (±10Hz) |
-| `R` | Reset cutoff à 100Hz |
 
 ## Structure des fichiers
 
