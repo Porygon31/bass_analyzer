@@ -24,6 +24,7 @@
 
 #include "audio_capture.h"
 #include "bass_detector.h"
+#include <imgui.h>
 #include <d3d11.h>
 #include <string>
 #include <chrono>
@@ -71,6 +72,11 @@ private:
     void drawPitchMeter(const PitchInfo& pitch, float width, float height);
     void drawScopePlot(float width, float height);
 
+    // --- Menu bar ---
+    void drawMenuBar();
+    void drawHelpWindow();
+    void drawSettingsWindow();
+
     // --- Fenêtre Win32 ---
     HWND        m_hwnd = nullptr;
     WNDCLASSEXW m_wc   = {};
@@ -104,6 +110,14 @@ private:
     bool  m_showHistory  = true;
     bool  m_showPitch    = true;
     bool  m_showScope    = true;
+    bool  m_showHelp     = false;
+    bool  m_showSettings = false;
+
+    // --- Couleurs des barres du spectre (4 niveaux d'intensité) ---
+    ImVec4 m_colBar1 = ImVec4(0.0f, 0.502f, 0.376f, 0.627f);  // < 0.2 (faible)
+    ImVec4 m_colBar2 = ImVec4(0.0f, 1.0f, 0.820f, 1.0f);      // 0.2–0.5 (moyen)
+    ImVec4 m_colBar3 = ImVec4(1.0f, 0.851f, 0.239f, 1.0f);    // 0.5–0.8 (fort)
+    ImVec4 m_colBar4 = ImVec4(1.0f, 0.420f, 0.420f, 1.0f);    // > 0.8 (très fort)
 
     // --- Smoothing du spectre ---
     // smoothSpeed contrôle la réactivité globale du spectre lissé.

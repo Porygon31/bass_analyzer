@@ -238,6 +238,14 @@ void GuiApp::renderFrame() {
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
 
+    drawMenuBar();
+    if (m_showHelp) {
+        ImGui::OpenPopup("Guide d'utilisation");
+        m_showHelp = false;
+    }
+    drawHelpWindow();
+    if (m_showSettings) drawSettingsWindow();
+
     // Full-window layout
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
@@ -266,6 +274,115 @@ void GuiApp::renderFrame() {
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
     HRESULT hr = m_swapChain->Present(1, 0);
     m_swapChainOccluded = (hr == DXGI_STATUS_OCCLUDED);
+}
+
+// =============================================================================
+// MENU BAR + FENÊTRES AIDE / SETTINGS
+// =============================================================================
+
+void GuiApp::drawMenuBar() {
+    if (ImGui::BeginMainMenuBar()) {
+        if (ImGui::BeginMenu("Aide")) {
+            if (ImGui::MenuItem("Guide d'utilisation"))
+                m_showHelp = true;
+            ImGui::EndMenu();
+        }
+        if (ImGui::BeginMenu("Settings")) {
+            if (ImGui::MenuItem("Couleurs du spectre"))
+                m_showSettings = true;
+            ImGui::EndMenu();
+        }
+        ImGui::EndMainMenuBar();
+    }
+}
+
+void GuiApp::drawHelpWindow() {
+    ImGui::SetNextWindowSize(ImVec2(600, 500), ImGuiCond_FirstUseEver);
+    bool open = true;
+    if (ImGui::BeginPopupModal("Guide d'utilisation", &open)) {
+
+        ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.82f, 1.0f), "Bass Analyzer v0.2");
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.24f, 1.0f), "Spectrum Analyzer");
+        ImGui::TextWrapped(
+            "Affiche le spectre de frequences en temps reel via une FFT (Fast Fourier Transform). "
+            "Chaque barre represente une bande de frequences. La couleur indique l'intensite : "
+            "plus le signal est fort (en dB), plus la couleur passe du cyan au jaune puis au rouge.");
+        ImGui::Spacing();
+
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.24f, 1.0f), "History");
+        ImGui::TextWrapped(
+            "Graphe temporel sur ~30 secondes montrant l'evolution de la frequence de pic des basses. "
+            "La ligne cyan represente le pic FFT, les points jaunes le pitch detecte par autocorrelation.");
+        ImGui::Spacing();
+
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.24f, 1.0f), "Pitch Detection");
+        ImGui::TextWrapped(
+            "Tuner chromatique qui detecte la note musicale jouee. Utilise l'algorithme McLeod NSDF "
+            "(autocorrelation normalisee) pour une detection precise du pitch fondamental. "
+            "L'indicateur en cents montre l'ecart par rapport a la note la plus proche.");
+        ImGui::Spacing();
+
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.24f, 1.0f), "Oscilloscope");
+        ImGui::TextWrapped(
+            "Affiche la forme d'onde brute du signal audio en temps reel (~400ms). "
+            "Permet de visualiser directement les oscillations du signal capte par WASAPI loopback.");
+        ImGui::Spacing();
+
+        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.24f, 1.0f), "Controles");
+        ImGui::TextWrapped(
+            "- Device : selectionne la sortie audio a analyser (WASAPI loopback)\n"
+            "- Bass Cutoff : frequence maximale analysee pour la detection de basses\n"
+            "- FFT Size : resolution frequentielle (plus grand = plus precis mais plus lent)\n"
+            "- Smoothing : vitesse de lissage du spectre (1=brut, 10=tres lisse)");
+        ImGui::Spacing();
+        ImGui::Separator();
+
+        if (ImGui::Button("Fermer", ImVec2(120, 0)))
+            ImGui::CloseCurrentPopup();
+
+        ImGui::EndPopup();
+    }
+}
+
+void GuiApp::drawSettingsWindow() {
+    ImGui::SetNextWindowSize(ImVec2(400, 320), ImGuiCond_FirstUseEver);
+    if (ImGui::Begin("Settings - Couleurs du spectre", &m_showSettings)) {
+
+        ImGui::Text("Intensite des barres");
+        ImGui::SameLine();
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip(
+                "L'intensite correspond a la magnitude du signal\n"
+                "normalisee entre 0 et 1.\n\n"
+                "Calcul : (valeur_dB - min) / (max - min)\n"
+                "avec min = -80 dB et max = 0 dB.\n\n"
+                "Plus la barre est haute, plus l'intensite est forte.");
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        ImGui::ColorEdit4("Faible  (< 0.2)",    (float*)&m_colBar1, ImGuiColorEditFlags_AlphaBar);
+        ImGui::ColorEdit4("Moyen   (0.2 - 0.5)", (float*)&m_colBar2, ImGuiColorEditFlags_AlphaBar);
+        ImGui::ColorEdit4("Fort    (0.5 - 0.8)", (float*)&m_colBar3, ImGuiColorEditFlags_AlphaBar);
+        ImGui::ColorEdit4("Tres fort (> 0.8)",   (float*)&m_colBar4, ImGuiColorEditFlags_AlphaBar);
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        if (ImGui::Button("Reinitialiser")) {
+            m_colBar1 = ImVec4(0.0f, 0.502f, 0.376f, 0.627f);
+            m_colBar2 = ImVec4(0.0f, 1.0f, 0.820f, 1.0f);
+            m_colBar3 = ImVec4(1.0f, 0.851f, 0.239f, 1.0f);
+            m_colBar4 = ImVec4(1.0f, 0.420f, 0.420f, 1.0f);
+        }
+    }
+    ImGui::End();
 }
 
 // =============================================================================
@@ -522,10 +639,10 @@ void GuiApp::drawSpectrumPlot(const SpectrumData& spectrum, float width, float h
         float y = pos.y + height - barH;
 
         ImU32 col;
-        if (normalized > 0.8f)      col = COL_RED;
-        else if (normalized > 0.5f) col = COL_YELLOW;
-        else if (normalized > 0.2f) col = COL_CYAN;
-        else                         col = IM_COL32(0x00, 0x80, 0x60, 0xA0);
+        if (normalized > 0.8f)      col = ImGui::ColorConvertFloat4ToU32(m_colBar4);
+        else if (normalized > 0.5f) col = ImGui::ColorConvertFloat4ToU32(m_colBar3);
+        else if (normalized > 0.2f) col = ImGui::ColorConvertFloat4ToU32(m_colBar2);
+        else                         col = ImGui::ColorConvertFloat4ToU32(m_colBar1);
 
         if (barW > 3.0f) dl->AddRectFilled(ImVec2(x, y), ImVec2(x + barW - 1, pos.y + height), col, 1.0f);
         else              dl->AddLine(ImVec2(x, y), ImVec2(x, pos.y + height), col, 2.0f);
