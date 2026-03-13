@@ -73,6 +73,8 @@ private:
     void drawScopePlot(float width, float height);
     void drawSpectrogramPanel();
     void drawSpectrogramPlot(float width, float height);
+    void drawDebugPanel();
+    void drawDebugContent();  // Contenu commun debug (utilisé par les deux modes)
 
     // --- Menu bar ---
     void drawMenuBar();
@@ -113,6 +115,8 @@ private:
     bool  m_showPitch    = true;
     bool  m_showScope    = true;
     bool  m_showSpectrogram = true;
+    bool  m_showDebug       = false;
+    bool  m_debugFloating   = true; // true = fenêtre flottante, false = inline
 
     // --- Spectrogram ring buffer ---
     static constexpr size_t SPECTROGRAM_ROWS = 200;  // ~10s @ 20Hz update
