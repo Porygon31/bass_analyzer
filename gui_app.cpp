@@ -263,9 +263,32 @@ void GuiApp::drawMainPanel() {
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 1.0f, 0.82f, 1.0f));
     ImGui::Text("BASS ANALYZER");
     ImGui::PopStyleColor();
-    ImGui::SameLine(ImGui::GetWindowWidth() - 350);
-    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "CPU: %.1f%%  |  Device: %s%s",
-        m_cpuUsage, m_capture.getDeviceName().c_str(), m_followDefaultDevice ? " (auto)" : "");
+    // Espace disponible à droite du titre (relatif à la fenêtre, tient compte scrollbar)
+    float titleW = ImGui::GetItemRectSize().x;
+    float contentMaxX = ImGui::GetContentRegionMax().x;
+    float availW = contentMaxX - titleW - 16;
+
+    // Formate le texte CPU + device
+    std::string deviceName = m_capture.getDeviceName();
+    std::string suffix = m_followDefaultDevice ? " (auto)" : "";
+    char infoBuf[256];
+    snprintf(infoBuf, sizeof(infoBuf), "CPU: %.1f%%  |  Device: %s%s",
+        m_cpuUsage, deviceName.c_str(), suffix.c_str());
+
+    // Si le texte est trop large, tronquer le nom du device avec "..."
+    float infoW = ImGui::CalcTextSize(infoBuf).x;
+    if (infoW > availW && deviceName.size() > 10) {
+        while (infoW > availW && deviceName.size() > 10) {
+            deviceName.pop_back();
+            snprintf(infoBuf, sizeof(infoBuf), "CPU: %.1f%%  |  Device: %s...%s",
+                m_cpuUsage, deviceName.c_str(), suffix.c_str());
+            infoW = ImGui::CalcTextSize(infoBuf).x;
+        }
+    }
+
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(contentMaxX - infoW);
+    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "%s", infoBuf);
     ImGui::Spacing();
 
     if (result.valid) {
