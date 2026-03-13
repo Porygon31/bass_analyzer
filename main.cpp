@@ -53,12 +53,18 @@ void runConsoleMode() {
     float cutoff = 100.0f;
     detector.init(capture.getSampleRate(), cutoff);
 
+    // Variables de lissage (même logique que gui_app.cpp)
+    float smoothSpeed = 5.0f;   // 1=raw, 5=balanced, 10=very smooth
+    float smoothFreq  = 0.0f;   // Fréquence lissée
+    float smoothDb    = -80.0f; // Magnitude lissée
+    const float dt    = 0.05f;  // Delta-time fixe (50ms, boucle à ~20fps)
+
     // Démarre la capture (callback depuis le thread audio)
     capture.start([&detector](const std::vector<float>& samples, uint32_t sr) {
         detector.feedSamples(samples);
     });
 
-    std::cout << "\033[90m[Controls] Q=Quit | +/- = Cutoff | R=Reset\n\033[0m\n";
+    std::cout << "\033[90m[Controls] Q=Quit | +/- = Cutoff | R=Reset | [/] = Speed\n\033[0m\n";
 
     // Boucle d'affichage ~20fps
     bool running = true;
@@ -80,18 +86,39 @@ void runConsoleMode() {
                     cutoff = 100.0f;
                     detector.setCutoff(cutoff);
                     break;
+                case '[':
+                    smoothSpeed = std::max<float>(1.0f, smoothSpeed - 1.0f);
+                    break;
+                case ']':
+                    smoothSpeed = std::min<float>(10.0f, smoothSpeed + 1.0f);
+                    break;
             }
         }
 
         auto result = detector.getLatestResult();
 
+        // Lissage asymétrique des valeurs affichées (même algo que gui_app.cpp)
+        // Attack rapide pour capter les pics, release lent pour la fluidité
+        if (result.valid) {
+            float attackRate  = 30.0f / smoothSpeed;
+            float releaseRate = 10.0f / smoothSpeed;
+
+            float freqRate = (result.peakFrequency > smoothFreq) ? attackRate : releaseRate;
+            float freqAlpha = 1.0f - expf(-dt * freqRate);
+            smoothFreq += (result.peakFrequency - smoothFreq) * freqAlpha;
+
+            float dbRate = (result.peakMagnitude > smoothDb) ? attackRate : releaseRate;
+            float dbAlpha = 1.0f - expf(-dt * dbRate);
+            smoothDb += (result.peakMagnitude - smoothDb) * dbAlpha;
+        }
+
         // Efface la ligne et réécrit (affichage in-place)
         std::cout << "\r\033[K"; // \r = retour chariot, \033[K = efface jusqu'à la fin
         if (result.valid) {
-            // Fréquence FFT en cyan
+            // Fréquence FFT lissée en cyan
             std::cout << " \033[1m\033[97mBASS: \033[96m"
                       << std::fixed << std::setprecision(1) << std::setw(6)
-                      << result.peakFrequency << " Hz\033[0m";
+                      << smoothFreq << " Hz\033[0m";
 
             // Note musicale en jaune (si pitch détecté)
             if (result.pitch.valid) {
@@ -101,13 +128,15 @@ void runConsoleMode() {
                           << std::noshowpos;
             }
 
-            // dB et cutoff en gris
+            // dB lissé, cutoff et speed en gris
             std::cout << " \033[90m[" << std::fixed << std::setprecision(1)
-                      << result.peakMagnitude << " dB]"
-                      << "  Cut: " << static_cast<int>(cutoff) << "Hz\033[0m";
+                      << smoothDb << " dB]"
+                      << "  Cut: " << static_cast<int>(cutoff) << "Hz"
+                      << "  Spd: " << std::setprecision(0) << smoothSpeed << "\033[0m";
         } else {
             std::cout << " \033[90mBASS: --- no signal ---  Cut: "
-                      << static_cast<int>(cutoff) << "Hz\033[0m";
+                      << static_cast<int>(cutoff) << "Hz"
+                      << "  Spd: " << std::setprecision(0) << smoothSpeed << "\033[0m";
         }
         std::cout << std::flush;
 
