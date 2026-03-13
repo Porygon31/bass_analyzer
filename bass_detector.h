@@ -87,6 +87,7 @@ public:
     float    getCutoff()            const { return m_cutoffHz; }
     uint32_t getEffectiveSampleRate() const { return m_effectiveSampleRate; }
     size_t   getFFTSize()           const { return m_fftSize; }
+    int      getDecimationFactor()  const { return m_decimFactor; }
 
 private:
     // Traite un buffer complet : filtre → décime → FFT → pitch → résultat
