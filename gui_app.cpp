@@ -262,7 +262,8 @@ void GuiApp::renderFrame() {
     if (m_showSpectrum) drawSpectrumPanel();
     if (m_showHistory)  drawHistoryPanel();
     if (m_showPitch)    drawPitchPanel();
-    if (m_showScope)    drawScopePanel();
+    if (m_showScope)        drawScopePanel();
+    if (m_showSpectrogram)  drawSpectrogramPanel();
     if (m_showDemo) ImGui::ShowDemoWindow(&m_showDemo);
 
     ImGui::End();
@@ -397,9 +398,32 @@ void GuiApp::drawMainPanel() {
     ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 1.0f, 0.82f, 1.0f));
     ImGui::Text("BASS ANALYZER");
     ImGui::PopStyleColor();
-    ImGui::SameLine(ImGui::GetWindowWidth() - 350);
-    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "CPU: %.1f%%  |  Device: %s%s",
-        m_cpuUsage, m_capture.getDeviceName().c_str(), m_followDefaultDevice ? " (auto)" : "");
+    // Espace disponible à droite du titre (relatif à la fenêtre, tient compte scrollbar)
+    float titleW = ImGui::GetItemRectSize().x;
+    float contentMaxX = ImGui::GetContentRegionMax().x;
+    float availW = contentMaxX - titleW - 16;
+
+    // Formate le texte CPU + device
+    std::string deviceName = m_capture.getDeviceName();
+    std::string suffix = m_followDefaultDevice ? " (auto)" : "";
+    char infoBuf[256];
+    snprintf(infoBuf, sizeof(infoBuf), "CPU: %.1f%%  |  Device: %s%s",
+        m_cpuUsage, deviceName.c_str(), suffix.c_str());
+
+    // Si le texte est trop large, tronquer le nom du device avec "..."
+    float infoW = ImGui::CalcTextSize(infoBuf).x;
+    if (infoW > availW && deviceName.size() > 10) {
+        while (infoW > availW && deviceName.size() > 10) {
+            deviceName.pop_back();
+            snprintf(infoBuf, sizeof(infoBuf), "CPU: %.1f%%  |  Device: %s...%s",
+                m_cpuUsage, deviceName.c_str(), suffix.c_str());
+            infoW = ImGui::CalcTextSize(infoBuf).x;
+        }
+    }
+
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(contentMaxX - infoW);
+    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "%s", infoBuf);
     ImGui::Spacing();
 
     if (result.valid) {
@@ -556,6 +580,8 @@ void GuiApp::drawControlsPanel() {
     ImGui::Checkbox("Pitch", &m_showPitch);
     ImGui::SameLine();
     ImGui::Checkbox("Scope", &m_showScope);
+    ImGui::SameLine();
+    ImGui::Checkbox("Spectrogram", &m_showSpectrogram);
     ImGui::Spacing();
 }
 
@@ -613,6 +639,18 @@ void GuiApp::drawSpectrumPlot(const SpectrumData& spectrum, float width, float h
             float alpha = 1.0f - expf(-m_deltaTime * rate);
             m_smoothedSpectrum[i] = current + (target - current) * alpha;
         }
+    }
+
+    // Ajouter la ligne courante au spectrogram
+    if (m_spectrogramData.size() != SPECTROGRAM_ROWS)
+        m_spectrogramData.resize(SPECTROGRAM_ROWS);
+    {
+        std::vector<float> row(m_smoothedSpectrum.size());
+        for (size_t i = 0; i < m_smoothedSpectrum.size(); i++)
+            row[i] = std::clamp((m_smoothedSpectrum[i] + 80.0f) / 80.0f, 0.0f, 1.0f);
+        m_spectrogramData[m_spectrogramHead] = std::move(row);
+        m_spectrogramHead = (m_spectrogramHead + 1) % SPECTROGRAM_ROWS;
+        if (m_spectrogramCount < SPECTROGRAM_ROWS) m_spectrogramCount++;
     }
 
     float dbMin = -80.0f, dbMax = 0.0f;
@@ -911,6 +949,67 @@ void GuiApp::drawScopePlot(float width, float height) {
 
     // Label durée
     dl->AddText(ImVec2(pos.x + 4, pos.y + 4), COL_DIM, "~400ms");
+
+    ImGui::Dummy(ImVec2(0, height + 4));
+}
+
+// =============================================================================
+// SPECTROGRAM (Waterfall 2D)
+// =============================================================================
+
+static ImU32 spectrogramColor(float t) {
+    float r, g, b;
+    if (t < 0.33f) {
+        float s = t / 0.33f;
+        r = 0; g = s; b = s * 0.82f;
+    } else if (t < 0.66f) {
+        float s = (t - 0.33f) / 0.33f;
+        r = s; g = 1.0f - s * 0.15f; b = 0.82f * (1.0f - s);
+    } else {
+        float s = (t - 0.66f) / 0.34f;
+        r = 1.0f; g = 0.85f * (1.0f - s * 0.5f); b = s * 0.4f;
+    }
+    return IM_COL32((int)(r*255), (int)(g*255), (int)(b*255), 255);
+}
+
+void GuiApp::drawSpectrogramPanel() {
+    if (!ImGui::CollapsingHeader("Spectrogram", ImGuiTreeNodeFlags_DefaultOpen)) return;
+    if (m_spectrogramCount == 0) {
+        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Waiting for data...");
+        return;
+    }
+    drawSpectrogramPlot(ImGui::GetContentRegionAvail().x, 200.0f);
+}
+
+void GuiApp::drawSpectrogramPlot(float width, float height) {
+    ImVec2 pos = ImGui::GetCursorScreenPos();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    dl->AddRectFilled(pos, ImVec2(pos.x + width, pos.y + height),
+                     IM_COL32(0x08, 0x08, 0x14, 0xFF), 4.0f);
+
+    size_t rows = m_spectrogramCount;
+    float rowH = height / static_cast<float>(rows);
+
+    // Itérer du plus ancien (haut) au plus récent (bas)
+    size_t start = (rows < SPECTROGRAM_ROWS) ? 0 : m_spectrogramHead;
+    for (size_t r = 0; r < rows; r++) {
+        const auto& row = m_spectrogramData[(start + r) % SPECTROGRAM_ROWS];
+        if (row.empty()) continue;
+
+        size_t numBins = row.size();
+        float binW = width / static_cast<float>(numBins);
+        float y0 = pos.y + r * rowH;
+        float y1 = y0 + rowH + 1.0f;
+
+        for (size_t i = 0; i < numBins; i++) {
+            float x0 = pos.x + static_cast<float>(i) * binW;
+            float x1 = x0 + binW;
+            dl->AddRectFilled(ImVec2(x0, y0), ImVec2(x1, y1), spectrogramColor(row[i]));
+        }
+    }
+
+    dl->AddText(ImVec2(pos.x + 4, pos.y + 4), IM_COL32(0xFF, 0xFF, 0xFF, 0x88), "ancien");
+    dl->AddText(ImVec2(pos.x + 4, pos.y + height - 16), IM_COL32(0xFF, 0xFF, 0xFF, 0x88), "recent");
 
     ImGui::Dummy(ImVec2(0, height + 4));
 }

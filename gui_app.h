@@ -71,6 +71,8 @@ private:
     void drawHistoryPlot(const std::vector<HistoryEntry>& history, float width, float height);
     void drawPitchMeter(const PitchInfo& pitch, float width, float height);
     void drawScopePlot(float width, float height);
+    void drawSpectrogramPanel();
+    void drawSpectrogramPlot(float width, float height);
 
     // --- Menu bar ---
     void drawMenuBar();
@@ -110,6 +112,13 @@ private:
     bool  m_showHistory  = true;
     bool  m_showPitch    = true;
     bool  m_showScope    = true;
+    bool  m_showSpectrogram = true;
+
+    // --- Spectrogram ring buffer ---
+    static constexpr size_t SPECTROGRAM_ROWS = 200;  // ~10s @ 20Hz update
+    std::vector<std::vector<float>> m_spectrogramData;
+    size_t m_spectrogramHead  = 0;
+    size_t m_spectrogramCount = 0;
     bool  m_showHelp     = false;
     bool  m_showSettings = false;
 
