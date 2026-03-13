@@ -212,7 +212,9 @@ void BassDetector::processBuffer() {
 
     // Conversion en dB
     float peakDb = 20.0f * log10f(std::max(peakMag / refMag, 1e-10f));
-    float rmsDb  = 10.0f * log10f(std::max(totalEnergy / (refMag * refMag), 1e-20f));
+    // RMS = énergie moyenne par bin (totalEnergy / nombre de bins dans la bande basse)
+    size_t numBassBins = (maxBin >= minBin) ? (maxBin - minBin + 1) : 1;
+    float rmsDb  = 10.0f * log10f(std::max(totalEnergy / numBassBins / (refMag * refMag), 1e-20f));
 
     // Timestamp
     auto now = std::chrono::steady_clock::now();
