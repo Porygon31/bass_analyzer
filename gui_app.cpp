@@ -93,7 +93,7 @@ bool GuiApp::init(int width, int height) {
             GetModuleHandle(nullptr), nullptr, nullptr, nullptr, nullptr,
             L"BassAnalyzerClass", nullptr};
     RegisterClassExW(&m_wc);
-    m_hwnd = CreateWindowW(m_wc.lpszClassName, L"Bass Analyzer v0.3",
+    m_hwnd = CreateWindowW(m_wc.lpszClassName, L"Bass Analyzer v0.2",
                            WS_OVERLAPPEDWINDOW, 100, 100, m_width, m_height,
                            nullptr, nullptr, m_wc.hInstance, nullptr);
 
@@ -245,8 +245,6 @@ void GuiApp::renderFrame() {
     }
     drawHelpWindow();
     if (m_showSettings) drawSettingsWindow();
-    // Debug en mode flottant → fenêtre séparée (comme l'aide)
-    if (m_showDebug && m_debugFloating) drawDebugPanel();
 
     // Full-window layout
     ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -266,8 +264,6 @@ void GuiApp::renderFrame() {
     if (m_showPitch)    drawPitchPanel();
     if (m_showScope)        drawScopePanel();
     if (m_showSpectrogram)  drawSpectrogramPanel();
-    // Debug en mode inline → panneau dans la fenêtre principale
-    if (m_showDebug && !m_debugFloating) drawDebugPanel();
     if (m_showDemo) ImGui::ShowDemoWindow(&m_showDemo);
 
     ImGui::End();
@@ -296,8 +292,6 @@ void GuiApp::drawMenuBar() {
         if (ImGui::BeginMenu("Settings")) {
             if (ImGui::MenuItem("Couleurs du spectre"))
                 m_showSettings = true;
-            ImGui::Separator();
-            ImGui::MenuItem("Debug", nullptr, &m_showDebug);
             ImGui::EndMenu();
         }
         ImGui::EndMainMenuBar();
@@ -309,7 +303,7 @@ void GuiApp::drawHelpWindow() {
     bool open = true;
     if (ImGui::BeginPopupModal("Guide d'utilisation", &open)) {
 
-        ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.82f, 1.0f), "Bass Analyzer v0.3");
+        ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.82f, 1.0f), "Bass Analyzer v0.2");
         ImGui::Separator();
         ImGui::Spacing();
 
@@ -337,23 +331,6 @@ void GuiApp::drawHelpWindow() {
         ImGui::TextWrapped(
             "Affiche la forme d'onde brute du signal audio en temps reel (~400ms). "
             "Permet de visualiser directement les oscillations du signal capte par WASAPI loopback.");
-        ImGui::Spacing();
-
-        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.24f, 1.0f), "Spectrogram (Waterfall)");
-        ImGui::TextWrapped(
-            "Affiche l'historique du spectre en 2D sous forme de heatmap. "
-            "L'axe horizontal represente les frequences, l'axe vertical le temps "
-            "(le plus ancien en haut, le plus recent en bas). "
-            "La couleur indique l'intensite : noir (silence), cyan (faible), "
-            "jaune (moyen), rouge (fort). Couvre environ 10 secondes d'historique.");
-        ImGui::Spacing();
-
-        ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.24f, 1.0f), "SNR (Signal-to-Noise Ratio)");
-        ImGui::TextWrapped(
-            "Barre indicatrice sous le VU-metre montrant le rapport signal/bruit. "
-            "Calcule comme la difference entre le pic dominant et le niveau RMS moyen. "
-            "Plus la valeur est elevee, mieux la basse ressort du bruit de fond. "
-            "Seuils : > 25 dB = excellent, 15-25 dB = bon, 5-15 dB = moyen, < 5 dB = faible.");
         ImGui::Spacing();
 
         ImGui::TextColored(ImVec4(1.0f, 0.85f, 0.24f, 1.0f), "Controles");
@@ -462,24 +439,18 @@ void GuiApp::drawMainPanel() {
         ImGui::PopFont();
         ImGui::PopFont();
 
-        // Note musicale à côté — toujours réserver l'espace (3 lignes)
-        // pour éviter les sauts de hauteur quand le pitch apparaît/disparaît.
+        // Note musicale à côté
         ImGui::SameLine();
-        ImGui::BeginGroup();
-        ImGui::Spacing(); ImGui::Spacing();
         if (result.pitch.valid) {
+            ImGui::BeginGroup();
+            ImGui::Spacing(); ImGui::Spacing();
             float c = result.pitch.confidence;
             ImGui::TextColored(ImVec4(c, 1.0f, 0.82f * c, 1.0f), "%s", result.pitch.noteName.c_str());
             ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "%.1f Hz (autocorr)", result.pitch.frequency);
             ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "%+.0f cents | conf: %.0f%%",
                               result.pitch.cents, result.pitch.confidence * 100.0f);
-        } else {
-            // Placeholder grisé pour garder la même hauteur
-            ImGui::TextColored(ImVec4(0.3f, 0.3f, 0.3f, 1.0f), "--");
-            ImGui::TextColored(ImVec4(0.3f, 0.3f, 0.3f, 1.0f), "-- Hz (autocorr)");
-            ImGui::TextColored(ImVec4(0.3f, 0.3f, 0.3f, 1.0f), "-- cents | conf: --%%");
+            ImGui::EndGroup();
         }
-        ImGui::EndGroup();
 
         // VU-mètre dB (barre horizontale avec gradient)
         ImGui::Spacing();
@@ -508,64 +479,6 @@ void GuiApp::drawMainPanel() {
         dl->AddText(ImVec2(textPos.x, textPos.y + 1), outlineCol, dbBuf);
         dl->AddText(textPos, textCol, dbBuf);
         ImGui::Dummy(ImVec2(0, barH + 4));
-
-        // ── Barre SNR (Signal-to-Noise Ratio) ──────────────────────────
-        // Affichée en permanence sous le VU-mètre pour indiquer la
-        // qualité du signal de basse par rapport au bruit de fond.
-        {
-            float snr = result.peakMagnitude - result.rmsLevel;
-            float snrFrac = std::clamp((snr + 20.0f) / 60.0f, 0.0f, 1.0f); // normalisé sur [-20, 40] dB
-
-            ImVec2 snrPos = ImGui::GetCursorScreenPos();
-            float snrW = ImGui::GetContentRegionAvail().x, snrH = 20.0f;
-
-            // Fond sombre
-            dl->AddRectFilled(snrPos, ImVec2(snrPos.x + snrW, snrPos.y + snrH),
-                              IM_COL32(0x10, 0x10, 0x20, 0xFF), 4.0f);
-
-            // Remplissage gradient : vert (bon SNR) → cyan/jaune/rouge
-            float snrFillW = snrW * snrFrac;
-            if (snrFillW > 2.0f) {
-                // Gauche fixe (COL_GREEN), droite varie selon le niveau SNR
-                ImU32 snrColR = (snrFrac > 0.8f) ? COL_CYAN :
-                                (snrFrac > 0.5f) ? COL_GREEN :
-                                (snrFrac > 0.3f) ? COL_YELLOW : COL_RED;
-                dl->AddRectFilledMultiColor(snrPos,
-                    ImVec2(snrPos.x + snrFillW, snrPos.y + snrH),
-                    COL_GREEN, snrColR, snrColR, COL_GREEN);
-            }
-
-            // Texte centré "SNR: XX.X dB" avec outline pour lisibilité
-            char snrBuf[32];
-            snprintf(snrBuf, sizeof(snrBuf), "SNR: %.1f dB", snr);
-            ImVec2 snrTs = ImGui::CalcTextSize(snrBuf);
-            ImVec2 snrTextPos(snrPos.x + snrW / 2 - snrTs.x / 2,
-                              snrPos.y + snrH / 2 - snrTs.y / 2);
-
-            bool snrCovers = (snrFillW > snrW / 2);
-            ImU32 snrOutline = snrCovers ? IM_COL32(0xFF, 0xFF, 0xFF, 0xBB)
-                                         : IM_COL32(0x00, 0x00, 0x00, 0xBB);
-            ImU32 snrText    = snrCovers ? IM_COL32(0x00, 0x00, 0x00, 0xFF)
-                                         : IM_COL32(0xFF, 0xFF, 0xFF, 0xFF);
-            dl->AddText(ImVec2(snrTextPos.x - 1, snrTextPos.y), snrOutline, snrBuf);
-            dl->AddText(ImVec2(snrTextPos.x + 1, snrTextPos.y), snrOutline, snrBuf);
-            dl->AddText(ImVec2(snrTextPos.x, snrTextPos.y - 1), snrOutline, snrBuf);
-            dl->AddText(ImVec2(snrTextPos.x, snrTextPos.y + 1), snrOutline, snrBuf);
-            dl->AddText(snrTextPos, snrText, snrBuf);
-
-            ImGui::Dummy(ImVec2(0, snrH + 4));
-
-            // Tooltip explicatif au survol de la barre SNR
-            if (ImGui::IsItemHovered())
-                ImGui::SetTooltip(
-                    "Rapport signal/bruit (SNR) : difference entre le pic\n"
-                    "et le niveau moyen. Plus c'est eleve, mieux la basse\n"
-                    "ressort du bruit de fond.\n\n"
-                    "  > 25 dB = excellent\n"
-                    "  15-25 dB = bon\n"
-                    "  5-15 dB = moyen\n"
-                    "  < 5 dB = faible");
-        }
     } else {
         ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "No bass signal detected...");
         ImGui::Spacing();
@@ -876,14 +789,7 @@ void GuiApp::drawPitchPanel() {
     if (!ImGui::CollapsingHeader("Pitch Detection", ImGuiTreeNodeFlags_DefaultOpen)) return;
     auto result = m_detector.getLatestResult();
     if (!result.pitch.valid) {
-        // Réserve exactement la même hauteur que drawPitchMeter (Dummy 90px)
-        // et dessine le texte via ImDrawList pour éviter l'ItemSpacing implicite
-        // qu'ImGui ajoute entre TextColored + Dummy.
-        ImVec2 textPos = ImGui::GetCursorScreenPos();
-        ImGui::GetWindowDrawList()->AddText(
-            ImVec2(textPos.x, textPos.y + 35.0f),
-            IM_COL32(0x80, 0x80, 0x80, 0xFF), "No pitch detected...");
-        ImGui::Dummy(ImVec2(0, 90.0f));
+        ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "No pitch detected...");
         return;
     }
     drawPitchMeter(result.pitch, ImGui::GetContentRegionAvail().x, 80.0f);
@@ -1067,7 +973,7 @@ static ImU32 spectrogramColor(float t) {
 }
 
 void GuiApp::drawSpectrogramPanel() {
-    if (!ImGui::CollapsingHeader("Spectrogram (Waterfall)", ImGuiTreeNodeFlags_DefaultOpen)) return;
+    if (!ImGui::CollapsingHeader("Spectrogram", ImGuiTreeNodeFlags_DefaultOpen)) return;
     if (m_spectrogramCount == 0) {
         ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "Waiting for data...");
         return;
@@ -1105,20 +1011,7 @@ void GuiApp::drawSpectrogramPlot(float width, float height) {
     dl->AddText(ImVec2(pos.x + 4, pos.y + 4), IM_COL32(0xFF, 0xFF, 0xFF, 0x88), "ancien");
     dl->AddText(ImVec2(pos.x + 4, pos.y + height - 16), IM_COL32(0xFF, 0xFF, 0xFF, 0x88), "recent");
 
-    // Échelle de fréquences en bas
-    float cutoff = m_detector.getSpectrum().cutoffHz;
-    if (cutoff > 0.0f) {
-        ImU32 tickCol = IM_COL32(0xFF, 0xFF, 0xFF, 0x66);
-        for (float freq = 20.0f; freq <= cutoff; freq += 20.0f) {
-            float x = pos.x + (freq / cutoff) * width;
-            dl->AddLine(ImVec2(x, pos.y + height), ImVec2(x, pos.y + height + 4), tickCol);
-            char buf[16];
-            snprintf(buf, sizeof(buf), "%.0f", freq);
-            dl->AddText(ImVec2(x - 6, pos.y + height + 4), tickCol, buf);
-        }
-    }
-
-    ImGui::Dummy(ImVec2(0, height + 18));
+    ImGui::Dummy(ImVec2(0, height + 4));
 }
 
 // =============================================================================
@@ -1148,172 +1041,6 @@ void GuiApp::updateCpuUsage() {
     m_prevKernel = curKernel;
     m_prevUser = curUser;
     m_prevTime = curTime;
-}
-
-// =============================================================================
-// PANNEAU DEBUG — Infos performance + analyse DSP
-// Activable via Settings > Debug dans la barre de menu.
-// Deux modes d'affichage :
-//   - Inline  : panneau intégré dans la fenêtre principale (CollapsingHeader)
-//   - Flottant : fenêtre séparée déplaçable (comme l'aide)
-// Chaque ligne affiche un tooltip explicatif au survol de la souris.
-// =============================================================================
-
-// Helper : affiche "label: value" avec un tooltip au hover.
-// Permet à l'utilisateur de comprendre chaque métrique sans documentation externe.
-static void debugLine(const char* label, const char* value, const char* tooltip) {
-    ImGui::Text("%s: %s", label, value);
-    if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("%s", tooltip);
-}
-
-// Contenu commun du panneau debug (appelé depuis les deux modes).
-// Dessine les deux sections Performance & DSP avec tous les tooltips.
-void GuiApp::drawDebugContent() {
-    // Buffer temporaire pour formater les valeurs numériques
-    char buf[128];
-
-    // Récupération des données courantes (thread-safe via les getters)
-    auto result   = m_detector.getLatestResult();
-    auto spectrum = m_detector.getSpectrum();
-    auto history  = m_detector.getHistory();
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Section 1 : Performance & Rendering
-    // Métriques liées au rendu graphique et au périphérique audio.
-    // ─────────────────────────────────────────────────────────────────────
-    if (ImGui::TreeNodeEx("Performance & Audio", ImGuiTreeNodeFlags_DefaultOpen)) {
-
-        // FPS — calculé à partir du delta-time inter-frame
-        snprintf(buf, sizeof(buf), "%.1f", (m_deltaTime > 0.0f) ? 1.0f / m_deltaTime : 0.0f);
-        debugLine("FPS", buf,
-            "Nombre d'images rendues par seconde. 60+ = fluide.");
-
-        // Frame time — durée d'une frame en millisecondes
-        snprintf(buf, sizeof(buf), "%.2f ms", m_deltaTime * 1000.0f);
-        debugLine("Frame time", buf,
-            "Temps de rendu d'une frame. < 16ms = 60 FPS.");
-
-        // CPU — utilisation CPU du processus bass_analyzer
-        snprintf(buf, sizeof(buf), "%.1f%%", m_cpuUsage);
-        debugLine("CPU", buf,
-            "Utilisation CPU du processus bass_analyzer.");
-
-        ImGui::Spacing();
-
-        // Sample rate — fréquence d'échantillonnage du device WASAPI
-        snprintf(buf, sizeof(buf), "%u Hz", m_capture.getSampleRate());
-        debugLine("Sample rate", buf,
-            "Frequence d'echantillonnage du peripherique audio (Hz).");
-
-        // Format audio — bits/canaux/type (float ou int)
-        snprintf(buf, sizeof(buf), "%u-bit / %u ch / %s",
-            m_capture.getBitsPerSample(),
-            m_capture.getChannels(),
-            m_capture.isFloatFormat() ? "float" : "int");
-        debugLine("Format", buf,
-            "Format PCM : bits par echantillon / nombre de canaux / type.");
-
-        // Taille du buffer oscilloscope en échantillons
-        snprintf(buf, sizeof(buf), "%zu samples", m_scopeBuffer.size());
-        debugLine("Scope buffer", buf,
-            "Taille du buffer oscilloscope en echantillons (~400ms).");
-
-        ImGui::TreePop();
-    }
-
-    ImGui::Separator();
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Section 2 : Analyse DSP
-    // Métriques liées au pipeline FFT, autocorrélation, et buffers.
-    // ─────────────────────────────────────────────────────────────────────
-    if (ImGui::TreeNodeEx("Analyse DSP", ImGuiTreeNodeFlags_DefaultOpen)) {
-
-        // Taille FFT — nombre de points utilisés pour la transformée
-        snprintf(buf, sizeof(buf), "%zu", m_detector.getFFTSize());
-        debugLine("FFT size", buf,
-            "Nombre de points de la FFT. Plus grand = meilleure resolution frequentielle.");
-
-        // Résolution fréquentielle — écart en Hz entre deux bins consécutifs
-        snprintf(buf, sizeof(buf), "%.2f Hz/bin", spectrum.freqPerBin);
-        debugLine("Resolution freq", buf,
-            "Ecart en Hz entre deux bins FFT consecutifs.");
-
-        // Nombre de bins affichés dans le spectre lissé
-        snprintf(buf, sizeof(buf), "%zu", m_smoothedSpectrum.size());
-        debugLine("Bins utilises", buf,
-            "Nombre de bins dans le spectre lisse affiche.");
-
-        // Décimation — réduction du sample rate pour l'analyse basses fréquences
-        snprintf(buf, sizeof(buf), "%u -> %u Hz (x%d)",
-            m_capture.getSampleRate(),
-            m_detector.getEffectiveSampleRate(),
-            m_detector.getDecimationFactor());
-        debugLine("Decimation", buf,
-            "Facteur de sous-echantillonnage : sample rate source divise par N.");
-
-        ImGui::Spacing();
-
-        // Peak FFT — fréquence et magnitude du pic dominant
-        snprintf(buf, sizeof(buf), "%.1f Hz @ %.1f dB",
-            result.peakFrequency, result.peakMagnitude);
-        debugLine("Peak FFT", buf,
-            "Frequence et magnitude du pic dominant dans la bande de basses.");
-
-        // Autocorrélation — pitch détecté par NSDF + confiance
-        snprintf(buf, sizeof(buf), "%.1f Hz, conf %.2f",
-            result.pitch.frequency, result.pitch.confidence);
-        debugLine("Autocorr", buf,
-            "Pitch detecte par autocorrelation NSDF + confiance [0-1].");
-
-        // SNR estimé — différence entre le pic et le niveau RMS moyen
-        float snr = result.peakMagnitude - result.rmsLevel;
-        snprintf(buf, sizeof(buf), "%.1f dB", snr);
-        debugLine("SNR estime", buf,
-            "Rapport signal/bruit : pic - niveau RMS moyen (dB).");
-
-        ImGui::Spacing();
-
-        // Remplissage du ring buffer spectrogram
-        snprintf(buf, sizeof(buf), "%zu / %zu lignes",
-            m_spectrogramCount, SPECTROGRAM_ROWS);
-        debugLine("Spectrogram", buf,
-            "Lignes accumulees dans le ring buffer spectrogram.");
-
-        // Remplissage de l'historique temporel
-        snprintf(buf, sizeof(buf), "%zu / %zu entrees",
-            history.size(), BassDetector::HISTORY_SIZE);
-        debugLine("History", buf,
-            "Entrees dans l'historique temporel (~30s max).");
-
-        ImGui::TreePop();
-    }
-}
-
-void GuiApp::drawDebugPanel() {
-    if (m_debugFloating) {
-        // --- Mode flottant : fenêtre séparée déplaçable ---
-        ImGui::SetNextWindowSize(ImVec2(420, 450), ImGuiCond_FirstUseEver);
-        if (ImGui::Begin("Debug - Performance & DSP", &m_showDebug)) {
-            // Checkbox pour basculer vers le mode inline.
-            // m_debugFloating=true → flottant, false → inline.
-            // Le label "Fenetre flottante" est coché quand on est en mode flottant.
-            ImGui::Checkbox("Fenetre flottante##debugmode2", &m_debugFloating);
-            ImGui::Separator();
-            ImGui::Spacing();
-            drawDebugContent();
-        }
-        ImGui::End();
-    } else {
-        // --- Mode inline : CollapsingHeader dans la fenêtre principale ---
-        if (!ImGui::CollapsingHeader("Debug##panel", ImGuiTreeNodeFlags_DefaultOpen))
-            return;
-        // Checkbox pour basculer vers le mode flottant
-        ImGui::Checkbox("Fenetre flottante##debugmode", &m_debugFloating);
-        ImGui::Spacing();
-        drawDebugContent();
-    }
 }
 
 // =============================================================================

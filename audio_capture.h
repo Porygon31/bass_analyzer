@@ -88,9 +88,6 @@ public:
     std::string  getDeviceName()       const { return m_deviceName; }
     std::wstring getCurrentDeviceId()  const { return m_currentDeviceId; }
     bool         isUsingDefaultDevice() const { return m_useDefaultDevice; }
-    uint16_t     getChannels()        const { return m_channels; }
-    uint16_t     getBitsPerSample()   const { return m_bitsPerSample; }
-    bool         isFloatFormat()      const { return m_isFloat; }
 
 private:
     friend class DeviceNotificationClient;
