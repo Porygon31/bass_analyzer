@@ -114,7 +114,8 @@ private:
     bool  m_showHistory  = true;
     bool  m_showPitch    = true;
     bool  m_showScope    = true;
-    bool  m_showSpectrogram = true;
+    bool  m_showSpectrogram = false;
+    bool  m_showSNR        = false;
     bool  m_showDebug       = false;
     bool  m_debugFloating   = true; // true = fenêtre flottante, false = inline
 
