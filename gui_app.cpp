@@ -297,6 +297,7 @@ void GuiApp::drawMenuBar() {
             if (ImGui::MenuItem("Couleurs du spectre"))
                 m_showSettings = true;
             ImGui::Separator();
+            ImGui::MenuItem("SNR", nullptr, &m_showSNR);
             ImGui::MenuItem("Debug", nullptr, &m_showDebug);
             ImGui::EndMenu();
         }
@@ -510,9 +511,8 @@ void GuiApp::drawMainPanel() {
         ImGui::Dummy(ImVec2(0, barH + 4));
 
         // ── Barre SNR (Signal-to-Noise Ratio) ──────────────────────────
-        // Affichée en permanence sous le VU-mètre pour indiquer la
-        // qualité du signal de basse par rapport au bruit de fond.
-        {
+        // Activable via Settings > SNR.
+        if (m_showSNR) {
             float snr = result.peakMagnitude - result.rmsLevel;
             float snrFrac = std::clamp((snr + 20.0f) / 60.0f, 0.0f, 1.0f); // normalisé sur [-20, 40] dB
 
