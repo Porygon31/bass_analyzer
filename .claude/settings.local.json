@@ -4,7 +4,18 @@
       "Bash(cmake --build:*)",
       "Bash(tasklist:*)",
       "Bash(findstr:*)",
-      "Bash(del \"C:\\\\Users\\\\jball\\\\source\\\\bass_analyzer\\\\build\\\\Release\\\\bass_analyzer.exe\")"
+      "Bash(del \"C:\\\\Users\\\\jball\\\\source\\\\bass_analyzer\\\\build\\\\Release\\\\bass_analyzer.exe\")",
+      "Bash(ls:*)",
+      "Bash(cmake:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nRefactor: reduce code duplication across audio capture and GUI\n\nExtract helper functions to eliminate repeated patterns:\n- wideToUtf8\\(\\) and acquireDevice\\(\\) in audio_capture \\(DRY init/switchDevice\\)\n- updateDeviceIndex\\(\\) in gui_app \\(3 identical loops → 1 method\\)\n- toULI\\(\\) for FILETIME→ULARGE_INTEGER \\(replaces 6 memcpy calls\\)\n- Unified getHistory\\(\\) ring buffer read to single loop\n- Consistent SAFE_RELEASE usage for all COM objects\n- Coupled FFT size labels/values in a single struct array\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git checkout:*)",
+      "Bash(gh pr:*)",
+      "Bash(find C:Usersjballsourcebass_analyzer -type f -name *.md)",
+      "Bash(git merge:*)",
+      "Bash(git push:*)",
+      "Bash(git pull:*)",
+      "Bash(taskkill //IM bass_analyzer.exe //F)"
     ]
   }
 }
