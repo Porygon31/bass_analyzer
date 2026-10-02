@@ -105,8 +105,8 @@ private:
     int  m_selectedDeviceIndex  = 0;    // Index dans m_deviceList
     bool m_followDefaultDevice  = true; // Auto-switch quand le défaut Windows change
 
-    // --- FFT ---
-    int m_fftSizeIndex = 0; // 0 = Auto, 1 = 512, 2 = 1024, ...
+    // --- Fenêtre d'analyse ---
+    int m_windowIndex = 2; // 2 = 300 ms, la durée par défaut de BassDetector
 
     // --- État de l'interface ---
     bool  m_showDemo     = false; // Afficher la démo ImGui (debug)
@@ -135,13 +135,14 @@ private:
 
     // --- Smoothing du spectre ---
     // smoothSpeed contrôle la réactivité globale du spectre lissé.
-    //   1.0  = brut (pas de lissage, réponse immédiate)
-    //   5.0  = smooth moyen (bon compromis lisibilité/réactivité)
+    //   1.0  = quasi brut (attack ~33ms)
+    //   2.0  = léger, par défaut (attack ~67ms, release ~200ms)
+    //   5.0  = smooth moyen (attack ~170ms, release ~500ms)
     //   10.0 = très lissé (molasses, joli mais lent)
     //
     // L'attack est ~3× plus rapide que le release pour que les pics
     // soient captés immédiatement mais descendent de façon smooth.
-    float m_smoothSpeed = 5.0f;
+    float m_smoothSpeed = 2.0f;
     std::vector<float> m_smoothedSpectrum;
 
     // Delta-time pour un smoothing indépendant du framerate

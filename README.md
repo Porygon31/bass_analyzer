@@ -23,16 +23,18 @@ Audio Loopback (48kHz, WASAPI)
     │
     ├─► Conversion Mono Float (supporte 16/24/32bit, N canaux)
     │
-    ├─► Filtre Passe-Bas Butterworth 4ème ordre
+    ├─► Filtre Passe-Bas Butterworth 4ème ordre (en flux, paquet par paquet)
     │
     ├─► Décimation (48kHz → ~400Hz)  ← ~120x moins de données
     │
-    ├─► FFT (FFTW3, fenêtre Hann, 2s, ~0.5Hz résolution)
+    ├─► Fenêtre glissante, analysée toutes les ~10ms
+    │
+    ├─► FFT (FFTW3, fenêtre Hann 300ms par défaut + zero-padding, grille ~0.4Hz)
     │   ├─► Interpolation parabolique sub-bin
     │   ├─► Spectre → GUI
     │   └─► Peak fréquence → Historique
     │
-    └─► Autocorrélation NSDF (McLeod)
+    └─► Autocorrélation NSDF (McLeod) sur les ~200 dernières ms
         ├─► Interpolation parabolique sub-sample
         ├─► Détection de note musicale
         └─► Confiance de détection
@@ -76,8 +78,8 @@ bass_analyzer.exe
 |---------|--------|
 | Combo "Device" | Sélectionner la sortie audio à analyser |
 | Slider "Bass Cutoff" | Ajuster la fréquence de coupure (30-500 Hz) |
-| Combo "FFT Size" | Résolution fréquentielle (Auto / 512 / 1024 / ... / 16384) |
-| Slider "Smoothing" | Lissage du spectre (0 = brut, 0.95 = très lissé) |
+| Combo "Fenetre" | Durée de son analysée (100 ms → 2 s, défaut 300 ms) : plus court = plus réactif (latence ≈ fenêtre / 2), plus long = notes proches mieux séparées |
+| Slider "Speed" | Lissage du spectre (1 = brut, 2 = défaut, 10 = très lissé) |
 | Checkboxes | Afficher/masquer Spectrum, History, Pitch, Oscilloscope |
 | Menu Aide | Guide d'utilisation intégré |
 | Menu Settings | Personnalisation des couleurs du spectre (4 niveaux d'intensité) |

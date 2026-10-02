@@ -102,21 +102,23 @@ void LowPassFilter::reset() {
     }
 }
 
-std::vector<float> decimate(const std::vector<float>& input, int factor) {
+void decimate(const std::vector<float>& input, int factor, int& phase, std::vector<float>& out) {
     // Décimation = garder 1 échantillon sur N.
     // Simple mais efficace. Le filtre passe-bas en amont garantit
     // que les fréquences au-dessus de Nyquist/2 du nouveau sample rate
     // sont déjà atténuées → pas d'aliasing.
-    if (factor <= 1) return input;
-
-    std::vector<float> output;
-    output.reserve(input.size() / factor + 1);
-
-    for (size_t i = 0; i < input.size(); i += factor) {
-        output.push_back(input[i]);
+    //
+    // phase = 0 → l'échantillon courant est gardé. La phase avance de 1 par
+    // échantillon et reboucle à 'factor', d'un paquet à l'autre.
+    if (factor <= 1) {
+        out.insert(out.end(), input.begin(), input.end());
+        return;
     }
 
-    return output;
+    for (float x : input) {
+        if (phase == 0) out.push_back(x);
+        if (++phase >= factor) phase = 0;
+    }
 }
 
 void applyHannWindow(std::vector<float>& samples) {

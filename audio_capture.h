@@ -118,6 +118,7 @@ private:
     IAudioClient*        m_audioClient   = nullptr;
     IAudioCaptureClient* m_captureClient = nullptr;
     WAVEFORMATEX*        m_waveFormat    = nullptr;
+    HANDLE               m_captureEvent  = nullptr; // Signalé par WASAPI à chaque paquet
 
     // --- Notification ---
     DeviceNotificationClient* m_notifyClient = nullptr;

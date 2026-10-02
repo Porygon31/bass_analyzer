@@ -54,7 +54,7 @@ void runConsoleMode() {
     detector.init(capture.getSampleRate(), cutoff);
 
     // Variables de lissage (même logique que gui_app.cpp)
-    float smoothSpeed = 5.0f;   // 1=raw, 5=balanced, 10=very smooth
+    float smoothSpeed = 2.0f;   // 1=raw, 2=light (défaut), 5=balanced, 10=very smooth
     float smoothFreq  = 0.0f;   // Fréquence lissée
     float smoothDb    = -80.0f; // Magnitude lissée
     const float dt    = 0.05f;  // Delta-time fixe (50ms, boucle à ~20fps)

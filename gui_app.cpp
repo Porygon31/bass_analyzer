@@ -361,7 +361,8 @@ void GuiApp::drawHelpWindow() {
         ImGui::TextWrapped(
             "- Device : selectionne la sortie audio a analyser (WASAPI loopback)\n"
             "- Bass Cutoff : frequence maximale analysee pour la detection de basses\n"
-            "- FFT Size : resolution frequentielle (plus grand = plus precis mais plus lent)\n"
+            "- Fenetre : duree de son analysee a chaque calcul (courte = plus reactif,\n"
+            "  longue = notes proches mieux separees). Latence ~ fenetre / 2\n"
             "- Smoothing : vitesse de lissage du spectre (1=brut, 10=tres lisse)");
         ImGui::Spacing();
         ImGui::Separator();
@@ -454,7 +455,9 @@ void GuiApp::drawMainPanel() {
         // Fréquence en gros (font ×2.5)
         ImGui::PushFont(nullptr);
         char freqBuf[64];
-        snprintf(freqBuf, sizeof(freqBuf), "%.1f Hz", result.peakFrequency);
+        // Médiane des derniers pics : les analyses arrivent toutes les ~10ms,
+        // la valeur brute ferait scintiller le chiffre
+        snprintf(freqBuf, sizeof(freqBuf), "%.1f Hz", result.stableFrequency);
         float oldScale = ImGui::GetFont()->Scale;
         ImGui::GetFont()->Scale = 2.5f;
         ImGui::PushFont(ImGui::GetFont());
@@ -616,48 +619,51 @@ void GuiApp::drawControlsPanel() {
             ImGui::SetTooltip("Auto-switch when Windows default audio device changes");
     }
 
-    // Ligne 2 : Cutoff + Reset + FFT Size + Speed
+    // Ligne 2 : Cutoff + Reset + Fenêtre + Speed
+    // Le détecteur protège lui-même sa reconfiguration (mutex) :
+    // pas besoin d'arrêter la capture pour changer un réglage.
     ImGui::SetNextItemWidth(250);
-    if (ImGui::SliderFloat("Bass Cutoff (Hz)", &m_cutoff, 30.0f, 500.0f, "%.0f Hz")) {
-        m_capture.stop();
+    ImGui::SliderFloat("Bass Cutoff (Hz)", &m_cutoff, 30.0f, 500.0f, "%.0f Hz");
+    // Appliqué au relâchement : chaque changement vide la fenêtre d'analyse,
+    // l'appliquer à chaque frame du glisser laisserait l'affichage vide
+    if (ImGui::IsItemDeactivatedAfterEdit())
         m_detector.setCutoff(m_cutoff);
-        m_capture.start(makeAudioCallback());
-    }
     ImGui::SameLine();
     if (ImGui::Button("Reset##cutoff")) {
         m_cutoff = 100.0f;
-        m_capture.stop();
         m_detector.setCutoff(m_cutoff);
-        m_capture.start(makeAudioCallback());
     }
 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(100);
-    static const struct { const char* label; size_t value; } fftOptions[] = {
-        {"Auto", 0}, {"512", 512}, {"1024", 1024}, {"2048", 2048},
-        {"4096", 4096}, {"8192", 8192}, {"16384", 16384}
+    static const struct { const char* label; float ms; } windowOptions[] = {
+        {"100 ms", 100.0f}, {"200 ms", 200.0f}, {"300 ms", 300.0f},
+        {"500 ms", 500.0f}, {"1 s", 1000.0f}, {"2 s", 2000.0f}
     };
-    if (ImGui::BeginCombo("FFT Size", fftOptions[m_fftSizeIndex].label)) {
-        for (int i = 0; i < IM_ARRAYSIZE(fftOptions); i++) {
-            if (ImGui::Selectable(fftOptions[i].label, i == m_fftSizeIndex)) {
-                m_fftSizeIndex = i;
-                m_capture.stop();
-                m_detector.setFftSize(fftOptions[i].value);
-                m_capture.start(makeAudioCallback());
+    if (ImGui::BeginCombo("Fenetre", windowOptions[m_windowIndex].label)) {
+        for (int i = 0; i < IM_ARRAYSIZE(windowOptions); i++) {
+            if (ImGui::Selectable(windowOptions[i].label, i == m_windowIndex)) {
+                m_windowIndex = i;
+                m_detector.setWindowMs(windowOptions[i].ms);
             }
         }
         ImGui::EndCombo();
     }
     if (ImGui::IsItemHovered()) {
-        float res = (float)m_detector.getEffectiveSampleRate() / (float)m_detector.getFFTSize();
-        ImGui::SetTooltip("FFT: %zu pts | Resolution: %.2f Hz", m_detector.getFFTSize(), res);
+        float windowMs = m_detector.getWindowMs();
+        ImGui::SetTooltip(
+            "Duree de son analysee a chaque calcul\n"
+            "Latence ~%.0f ms | Separation ~%.1f Hz | FFT: %zu pts\n\n"
+            "Plus court = plus reactif\n"
+            "Plus long = notes proches mieux separees",
+            windowMs / 2.0f, 2000.0f / windowMs, m_detector.getFFTSize());
     }
 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(120);
     ImGui::SliderFloat("Speed", &m_smoothSpeed, 1.0f, 10.0f, "%.1f");
     if (ImGui::IsItemHovered())
-        ImGui::SetTooltip("Smoothing speed\n1 = raw (instant)\n5 = balanced\n10 = very smooth");
+        ImGui::SetTooltip("Smoothing speed\n1 = raw (instant)\n2 = light (default)\n5 = balanced\n10 = very smooth");
 
     // Ligne 3 : Checkboxes panels
     ImGui::Checkbox("Spectrum", &m_showSpectrum);
@@ -1230,15 +1236,32 @@ void GuiApp::drawDebugContent() {
     // ─────────────────────────────────────────────────────────────────────
     if (ImGui::TreeNodeEx("Analyse DSP", ImGuiTreeNodeFlags_DefaultOpen)) {
 
-        // Taille FFT — nombre de points utilisés pour la transformée
+        // Fenêtre d'analyse — durée de son utilisée à chaque calcul
+        float windowMs = m_detector.getWindowMs();
+        snprintf(buf, sizeof(buf), "%.0f ms (%zu ech.) -> latence ~%.0f ms",
+            windowMs, m_detector.getWindowLen(), windowMs / 2.0f);
+        debugLine("Fenetre", buf,
+            "Duree de son analysee a chaque calcul. Le resultat reflete\n"
+            "le son d'environ une demi-fenetre en arriere.");
+
+        // Hop — intervalle entre deux analyses
+        float effRate = static_cast<float>(m_detector.getEffectiveSampleRate());
+        float hopMs = (effRate > 0.0f)
+            ? 1000.0f * static_cast<float>(m_detector.getHopLen()) / effRate : 0.0f;
+        snprintf(buf, sizeof(buf), "%.1f ms (%zu ech.)", hopMs, m_detector.getHopLen());
+        debugLine("Hop", buf,
+            "Intervalle entre deux analyses (environ une par paquet audio).");
+
+        // Taille FFT — la fenêtre complétée par des zéros
         snprintf(buf, sizeof(buf), "%zu", m_detector.getFFTSize());
         debugLine("FFT size", buf,
-            "Nombre de points de la FFT. Plus grand = meilleure resolution frequentielle.");
+            "Nombre de points de la FFT : la fenetre completee par des zeros (zero-padding).");
 
-        // Résolution fréquentielle — écart en Hz entre deux bins consécutifs
+        // Grille fréquentielle — écart en Hz entre deux bins consécutifs
         snprintf(buf, sizeof(buf), "%.2f Hz/bin", spectrum.freqPerBin);
-        debugLine("Resolution freq", buf,
-            "Ecart en Hz entre deux bins FFT consecutifs.");
+        debugLine("Grille FFT", buf,
+            "Ecart en Hz entre deux bins FFT consecutifs. Grace au zero-padding,\n"
+            "la grille est plus fine que la vraie resolution (~2 / fenetre).");
 
         // Nombre de bins affichés dans le spectre lissé
         snprintf(buf, sizeof(buf), "%zu", m_smoothedSpectrum.size());
@@ -1337,6 +1360,15 @@ bool GuiApp::createDeviceD3D(HWND hWnd) {
     HRESULT hr = D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0,
         levels, 2, D3D11_SDK_VERSION, &sd, &m_swapChain, &m_d3dDevice, &featureLevel, &m_d3dContext);
     if (FAILED(hr)) return false;
+
+    // Une seule image en attente côté GPU (3 par défaut) : l'image affichée
+    // correspond à des données plus récentes (~15-30ms gagnées à 60Hz)
+    IDXGIDevice1* dxgiDevice = nullptr;
+    if (SUCCEEDED(m_d3dDevice->QueryInterface(IID_PPV_ARGS(&dxgiDevice)))) {
+        dxgiDevice->SetMaximumFrameLatency(1);
+        dxgiDevice->Release();
+    }
+
     createRenderTarget();
     return true;
 }

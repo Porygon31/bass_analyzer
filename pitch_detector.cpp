@@ -123,7 +123,7 @@ PitchInfo PitchDetector::detect(const std::vector<float>& samples) {
     //
     // On ajuste une parabole sur les 3 points autour du pic (a, b, c)
     // et on trouve le sommet analytique :
-    //   δ = (a - c) / (2·(2b - a - c))
+    //   δ = (c - a) / (2·(2b - a - c))
     //   lag_interpolé = bestLag + δ
     //
     // Ça donne une précision bien meilleure que la résolution en samples.
@@ -136,7 +136,7 @@ PitchInfo PitchDetector::detect(const std::vector<float>& samples) {
         float c = m_nsdf[bestLag + 1];
         float denom = 2.0f * (2.0f * b - a - c);
         if (std::abs(denom) > 1e-10f) {
-            float delta = (a - c) / denom;
+            float delta = (c - a) / denom;
             lagInterp = static_cast<float>(bestLag) + delta;
 
             // Valeur interpolée du pic (pour la confiance)

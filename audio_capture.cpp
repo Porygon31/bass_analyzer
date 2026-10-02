@@ -6,7 +6,8 @@
  *    ou un device spécifique par son ID
  * 2. On l'initialise en mode AUDCLNT_STREAMFLAGS_LOOPBACK
  *    → ça dit à Windows "je veux lire ce qui sort, pas ce qui entre"
- * 3. Un thread tourne en boucle et lit les paquets audio disponibles
+ * 3. Un thread (priorité MMCSS "Pro Audio") attend l'événement que WASAPI
+ *    signale à chaque paquet, puis lit les paquets audio disponibles
  * 4. Chaque paquet est converti en mono float et envoyé au callback
  *
  * Détection des changements :
@@ -19,6 +20,7 @@
  */
 #include "audio_capture.h"
 #include <functiondiscoverykeys_devpkey.h>
+#include <avrt.h>
 #include <iostream>
 #include <cstring>
 
@@ -132,6 +134,7 @@ void AudioCapture::releaseDeviceInterfaces() {
     SAFE_RELEASE(m_captureClient);
     SAFE_RELEASE(m_audioClient);
     SAFE_RELEASE(m_device);
+    if (m_captureEvent) { CloseHandle(m_captureEvent); m_captureEvent = nullptr; }
 
     m_sampleRate = 0;
     m_channels = 0;
@@ -229,17 +232,30 @@ bool AudioCapture::initDeviceInterfaces() {
         m_isFloat = (ext->SubFormat == KSDATAFORMAT_SUBTYPE_IEEE_FLOAT);
     }
 
-    // Initialisation du client audio en mode loopback
-    // AUDCLNT_STREAMFLAGS_LOOPBACK : capture ce qui sort des speakers
-    // Buffer de 50ms (500000 unités de 100ns) — compromis latence/stabilité
+    // Initialisation du client audio en mode loopback, piloté par événement
+    // AUDCLNT_STREAMFLAGS_LOOPBACK      : capture ce qui sort des speakers
+    // AUDCLNT_STREAMFLAGS_EVENTCALLBACK : WASAPI signale un événement dès qu'un
+    //   paquet est prêt → pas d'attente fixe (supporté en loopback depuis Win10 1703)
+    // Buffer de 50ms (500000 unités de 100ns) : marge si le thread prend du retard,
+    // sans effet sur la latence puisqu'on vide le buffer à chaque événement
     REFERENCE_TIME bufferDuration = 500000; // 50ms
     hr = m_audioClient->Initialize(
         AUDCLNT_SHAREMODE_SHARED,        // Mode partagé (pas d'accès exclusif)
-        AUDCLNT_STREAMFLAGS_LOOPBACK,    // Mode loopback !
+        AUDCLNT_STREAMFLAGS_LOOPBACK |   // Mode loopback !
+        AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
         bufferDuration, 0,
         m_waveFormat, nullptr
     );
     CHECK_HR(hr, "Failed to initialize audio client in loopback mode");
+
+    // Événement auto-reset, signalé par WASAPI à chaque paquet disponible
+    m_captureEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    if (!m_captureEvent) {
+        std::cerr << "[AudioCapture] Failed to create capture event\n";
+        return false;
+    }
+    hr = m_audioClient->SetEventHandle(m_captureEvent);
+    CHECK_HR(hr, "Failed to set capture event handle");
 
     // Obtention de l'interface de capture (pour lire les buffers)
     hr = m_audioClient->GetService(__uuidof(IAudioCaptureClient), (void**)&m_captureClient);
@@ -269,6 +285,9 @@ bool AudioCapture::start(AudioCallback callback) {
 
 void AudioCapture::stop() {
     m_running = false;
+    // Réveille tout de suite le thread de capture : sinon il attendrait le
+    // prochain paquet, qui n'arrive jamais quand rien ne joue
+    if (m_captureEvent) SetEvent(m_captureEvent);
     if (m_thread.joinable()) m_thread.join();
     if (m_audioClient) m_audioClient->Stop();
 }
@@ -339,10 +358,18 @@ bool AudioCapture::switchDevice(const std::wstring& deviceId, AudioCallback call
 }
 
 void AudioCapture::captureLoop() {
+    // Priorité MMCSS "Pro Audio" : Windows réveille ce thread en priorité,
+    // même quand le CPU est chargé (avrt.lib)
+    DWORD taskIndex = 0;
+    HANDLE mmcssTask = AvSetMmThreadCharacteristicsW(L"Pro Audio", &taskIndex);
+
     while (m_running) {
-        // On dort 10ms pour laisser le buffer se remplir
-        // À 48kHz, 10ms ≈ 480 échantillons — assez pour le traitement
-        Sleep(10);
+        // On attend que WASAPI signale un paquet (~toutes les 10ms quand du son joue).
+        // Timeout de 100ms : en loopback, aucun paquet n'arrive quand rien ne joue,
+        // et la boucle doit quand même vérifier régulièrement m_running.
+        DWORD wait = WaitForSingleObject(m_captureEvent, 100);
+        if (wait == WAIT_TIMEOUT) continue;
+        if (wait != WAIT_OBJECT_0) break; // Handle invalide : on arrête proprement
 
         // Vérifie combien de paquets sont disponibles dans le buffer
         UINT32 packetLength = 0;
@@ -376,6 +403,8 @@ void AudioCapture::captureLoop() {
             if (FAILED(hr)) break;
         }
     }
+
+    if (mmcssTask) AvRevertMmThreadCharacteristics(mmcssTask);
 }
 
 std::vector<float> AudioCapture::convertToMonoFloat(const BYTE* data, UINT32 numFrames) {

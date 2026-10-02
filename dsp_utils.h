@@ -64,13 +64,17 @@ namespace DSP {
         bool m_designed = false;
     };
 
-    // Décimation : réduit le sample rate par un facteur entier.
-    // Garde 1 échantillon sur 'factor'. Le signal DOIT être filtré passe-bas
-    // AVANT la décimation pour éviter l'aliasing (repliement de spectre).
+    // Décimation en flux : réduit le sample rate par un facteur entier.
+    // Ajoute à 'out' 1 échantillon sur 'factor'. Le signal DOIT être filtré
+    // passe-bas AVANT la décimation pour éviter l'aliasing (repliement de spectre).
+    //
+    // 'phase' conserve la position dans le cycle de décimation entre deux appels,
+    // ce qui permet de traiter des paquets de taille quelconque (ex: 441 samples
+    // à 44.1kHz) sans décaler la grille d'échantillonnage.
     //
     // Ex: décimation x120 → 48000 Hz → 400 Hz
     // Ça réduit massivement la quantité de données à traiter par la FFT.
-    std::vector<float> decimate(const std::vector<float>& input, int factor);
+    void decimate(const std::vector<float>& input, int factor, int& phase, std::vector<float>& out);
 
     // Applique une fenêtre de Hann in-place.
     // La fenêtre de Hann atténue les bords du signal vers zéro, ce qui réduit
